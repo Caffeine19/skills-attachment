@@ -3,6 +3,12 @@
   "displayName": "skills-attachment",
   "description": "Add Skills as native attachments in Copilot Chat Cmd+/ picker",
   "version": "0.0.1",
+  "icon": "images/icon.png",
+  "publisher": "caffeinecat",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Caffeine19/skills-attachment.git"
+  },
   "engines": {
     "vscode": "^1.136.0"
   },

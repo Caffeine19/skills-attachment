@@ -1,6 +1,10 @@
 # Skills Attachment
 
+![Skills Attachment icon](images/icon.png)
+
 Adds native Skills support to the Copilot Chat `Cmd+/` attachment picker. Uses the `chatContextProvider` Proposed API — VS Code Insiders only.
+
+> Icon source: [ray.so](https://ray.so/8yWRyUF)
 
 ## Usage
 
