@@ -4,6 +4,7 @@ import {
   discoverSkills,
   SkillDiscoveryResult,
 } from "./skillsDiscovery.js";
+import { logger } from "./logger.js";
 
 /**
  * ChatAttachContextProvider implementation for Skills.
@@ -15,19 +16,19 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
   private _refreshTimer: NodeJS.Timeout | null = null;
 
   constructor() {
-    console.error("SKILLS-ATTACHMENT: SkillsAttachProvider constructor called");
+    logger.log("SkillsAttachProvider constructor called");
 
     // Listen for configuration changes
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("chat.agentSkillsLocations")) {
-        console.error("SKILLS-ATTACHMENT: config changed, refreshing skills");
+        logger.log("config changed, refreshing skills");
         this._refreshSkills();
       }
     });
 
     // Listen for workspace folder changes
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      console.error("SKILLS-ATTACHMENT: workspace folders changed, refreshing");
+      logger.log("workspace folders changed, refreshing");
       this._refreshSkills();
     });
 
@@ -49,12 +50,12 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
       "**/.claude/skills/*/SKILL.md",
     ];
 
-    for (const pattern of patterns) {
+    patterns.forEach((pattern) => {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       watcher.onDidChange(() => this._scheduleRefresh());
       watcher.onDidCreate(() => this._scheduleRefresh());
       watcher.onDidDelete(() => this._scheduleRefresh());
-    }
+    });
   }
 
   /**
@@ -74,16 +75,16 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
    */
   private async _refreshSkills(): Promise<void> {
     try {
-      console.error("SKILLS-ATTACHMENT: _refreshSkills starting...");
+      logger.log("_refreshSkills starting...");
       this._cachedResult = await discoverSkills();
-      console.error(
-        "SKILLS-ATTACHMENT: _refreshSkills done, got",
+      logger.log(
+        "_refreshSkills done, got",
         this._cachedResult.skills.length,
         "skills",
       );
       this._onDidChangeSkills.fire();
     } catch (error) {
-      console.error("SKILLS-ATTACHMENT: _refreshSkills FAILED:", error);
+      logger.error("_refreshSkills FAILED:", error);
     }
   }
 
@@ -94,7 +95,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
   async provideAttachChatContext(
     token: vscode.CancellationToken,
   ): Promise<vscode.ChatContextItem[]> {
-    console.error("SKILLS-ATTACHMENT: provideAttachChatContext called");
+    logger.log("provideAttachChatContext called");
 
     // Ensure we have fresh data
     if (!this._cachedResult) {
@@ -102,7 +103,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
     }
 
     const skills = this._cachedResult?.skills || [];
-    console.error("SKILLS-ATTACHMENT: providing", skills.length, "skills");
+    logger.log("providing", skills.length, "skills");
     const items: vscode.ChatContextItem[] = [];
 
     for (const skill of skills) {
@@ -119,14 +120,15 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
       });
     }
 
-    console.error("SKILLS-ATTACHMENT: returning", items.length, "items");
+    logger.log("returning", items.length, "items");
     return items;
   }
 
   /**
    * Resolve a chat context item to get its full value.
    * This is called when the user selects a skill from the picker.
-   * Only provides the SKILL.md path - the agent should read it on its own.
+   * Dynamically checks github.copilot.chat.skillTool.enabled to determine
+   * whether to instruct the agent to use the skill tool or read the file.
    */
   async resolveAttachChatContext(
     context: vscode.ChatContextItem,
@@ -145,9 +147,38 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
       (s) => s.uri.toString() === skillUri.toString(),
     );
 
+    const skillName = skill?.name || "Unknown";
+    const skillDesc = skill?.description || "";
+
+    // Check if the skill tool is enabled
+    const config = vscode.workspace.getConfiguration("github.copilot.chat");
+    const skillToolEnabled = config.get<boolean>("skillTool.enabled", false);
+
+    const loadInstruction = skillToolEnabled
+      ? `Use the skill tool with the skill name "${skillName}" to load this skill.`
+      : `Use the readFile tool to read the SKILL.md file at: ${skillUri.fsPath}`;
+
     return {
       ...context,
-      value: skillUri.fsPath,
+      value: [
+        `The user has explicitly chosen to load the skill "${skillName}".`,
+        `You MUST NOT respond to the user's message until you have read and loaded the following skill.`,
+        ``,
+        `SKILL NAME: ${skillName}`,
+        `SKILL FILE: ${skillUri.fsPath}`,
+        skillDesc ? `SKILL DESCRIPTION: ${skillDesc}` : "",
+        ``,
+        `INSTRUCTIONS:`,
+        `- STOP. Do not generate any response yet.`,
+        `- ${loadInstruction}`,
+        `- ABSORB the contents — it contains your behavioral directives for this task.`,
+        `- ONLY THEN proceed to respond to the user, following the skill's instructions exactly.`,
+        ``,
+        `Failure to load the skill before responding will result in an incorrect and unhelpful answer.`,
+        `This skill was deliberately selected by the user and takes precedence over default behavior.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
       modelDescription:
         skill?.description || `Agent Skill: ${skill?.name || "Unknown"}`,
     };

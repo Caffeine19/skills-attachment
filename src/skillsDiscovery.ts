@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { logger } from "./logger.js";
 
 /**
  * Represents a discovered Skill with its metadata.
@@ -126,8 +127,8 @@ async function parseSkillFile(
 
     // Validate name matches folder name
     if (name !== folderName) {
-      console.warn(
-        `[SkillsDiscovery] Skill name "${name}" does not match folder name "${folderName}", using folder name: ${uri}`,
+      logger.warn(
+        `Skill name "${name}" does not match folder name "${folderName}", using folder name: ${uri}`,
       );
       return {
         name: folderName,
@@ -158,10 +159,7 @@ async function parseSkillFile(
           : vscode.workspace.asRelativePath(uri),
     };
   } catch (error) {
-    console.error(
-      `[SkillsDiscovery] Failed to parse skill file: ${uri}`,
-      error,
-    );
+    logger.error(`Failed to parse skill file: ${uri}`, error);
     return null;
   }
 }
@@ -190,10 +188,7 @@ async function resolveSourceFolder(
 
     return vscode.Uri.file(resolvedPath);
   } catch (error) {
-    console.error(
-      `[SkillsDiscovery] Failed to resolve path: ${folderPath}`,
-      error,
-    );
+    logger.error(`Failed to resolve path: ${folderPath}`, error);
     return null;
   }
 }
@@ -351,9 +346,7 @@ export async function discoverSkills(
   });
 
   const durationInMillis = Date.now() - startTime;
-  console.log(
-    `[SkillsDiscovery] Found ${allSkills.length} skills in ${durationInMillis}ms`,
-  );
+  logger.log(`Found ${allSkills.length} skills in ${durationInMillis}ms`);
 
   return {
     skills: allSkills,
