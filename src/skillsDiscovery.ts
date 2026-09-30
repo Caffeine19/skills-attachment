@@ -1,40 +1,13 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { logger } from "./logger.js";
-
-/**
- * Represents a discovered Skill with its metadata.
- */
-export interface DiscoveredSkill {
-  /** Skill name (from SKILL.md frontmatter or folder name) */
-  readonly name: string;
-  /** Human-readable description */
-  readonly description?: string;
-  /** Whether the skill can be invoked by users */
-  readonly userInvocable: boolean;
-  /** Optional argument hint for the skill */
-  readonly argumentHint?: string;
-  /** URI of the SKILL.md file */
-  readonly uri: vscode.Uri;
-  /** Storage type: 'workspace' or 'user' */
-  readonly storage: "workspace" | "user";
-  /** Workspace folder name (for multi-root workspaces) */
-  readonly workspaceFolder?: string;
-  /** Full path for display purposes */
-  readonly displayPath: string;
-}
-
-/**
- * Result of skill discovery with metadata about the discovery process.
- */
-export interface SkillDiscoveryResult {
-  /** All discovered skills */
-  readonly skills: DiscoveredSkill[];
-  /** Source folders that were searched */
-  readonly sourceFolders: { uri: vscode.Uri; storage: "workspace" | "user" }[];
-  /** Duration of the discovery process in milliseconds */
-  readonly durationInMillis: number;
-}
+import { Effect } from "effect";
+import { logger } from "./utils/logger.js";
+import { DirectoryAccessError, SkillFileError } from "./types/errors.js";
+import type {
+  DiscoveredSkill,
+  SkillDiscoveryResult,
+  SkillStorage,
+} from "./types/skill.js";
 
 /**
  * Default skill source folders matching VS Code's built-in locations.
@@ -95,6 +68,18 @@ function parseFrontmatter(
 /**
  * Get the skill folder name from a SKILL.md URI.
  */
+/**
+ * Extract a string value from frontmatter, returning undefined if the value
+ * is not a string.
+ */
+function getStringValue(
+  frontmatter: Record<string, string | boolean | undefined>,
+  key: string,
+): string | undefined {
+  const value = frontmatter[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 function getSkillFolderName(uri: vscode.Uri): string {
   const parts = uri.path.split("/");
   // SKILL.md is inside the skill folder, so go up one level
@@ -102,23 +87,30 @@ function getSkillFolderName(uri: vscode.Uri): string {
 }
 
 /**
- * Read and parse a SKILL.md file.
+ * Read and parse a SKILL.md file (Effect version).
+ * Fails with SkillFileError on read failure; succeeds with null when the
+ * skill should be skipped (not user-invocable).
  */
-async function parseSkillFile(
+const parseSkillFileEffect = (
   uri: vscode.Uri,
   storage: "workspace" | "user",
   workspaceFolder?: string,
-): Promise<DiscoveredSkill | null> {
-  try {
-    const contentBytes = await vscode.workspace.fs.readFile(uri);
+): Effect.Effect<DiscoveredSkill | null, SkillFileError> =>
+  Effect.gen(function* () {
+    const contentBytes = yield* Effect.tryPromise({
+      try: () => vscode.workspace.fs.readFile(uri),
+      catch: (cause) => new SkillFileError({ uri, cause }),
+    });
     const content = Buffer.from(contentBytes).toString("utf-8");
     const frontmatter = parseFrontmatter(content);
 
     const folderName = getSkillFolderName(uri);
-    const name = (frontmatter.name as string) || folderName;
-    const description = frontmatter.description as string | undefined;
+    const name = getStringValue(frontmatter, "name") || folderName;
+    const description = getStringValue(frontmatter, "description");
     const userInvocable = frontmatter["user-invocable"] !== false;
-    const argumentHint = frontmatter["argument-hint"] as string | undefined;
+    const disableModelInvocation =
+      frontmatter["disable-model-invocation"] === true;
+    const argumentHint = getStringValue(frontmatter, "argument-hint");
 
     // Skip if user-invocable is explicitly false
     if (!userInvocable) {
@@ -134,6 +126,7 @@ async function parseSkillFile(
         name: folderName,
         description,
         userInvocable,
+        disableModelInvocation,
         argumentHint,
         uri,
         storage,
@@ -149,6 +142,7 @@ async function parseSkillFile(
       name,
       description,
       userInvocable,
+      disableModelInvocation,
       argumentHint,
       uri,
       storage,
@@ -158,58 +152,68 @@ async function parseSkillFile(
           ? uri.path.replace(/^\/Users\/[^/]+/, "~")
           : vscode.workspace.asRelativePath(uri),
     };
-  } catch (error) {
-    logger.error(`Failed to parse skill file: ${uri}`, error);
-    return null;
-  }
-}
+  });
 
 /**
  * Resolve a skill source folder path to a URI.
+ * Logs and returns null on failure.
  */
 async function resolveSourceFolder(
   folderPath: string,
   storage: "workspace" | "user",
   workspaceFolder?: vscode.WorkspaceFolder,
 ): Promise<vscode.Uri | null> {
-  try {
-    let resolvedPath: string;
+  return Effect.runPromise(
+    Effect.try({
+      try: () => {
+        let resolvedPath: string;
 
-    if (folderPath.startsWith("~/")) {
-      // User home path
-      const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-      resolvedPath = path.join(homeDir, folderPath.slice(2));
-    } else if (workspaceFolder) {
-      // Workspace relative path
-      resolvedPath = path.join(workspaceFolder.uri.fsPath, folderPath);
-    } else {
-      return null;
-    }
+        if (folderPath.startsWith("~/")) {
+          // User home path
+          const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+          resolvedPath = path.join(homeDir, folderPath.slice(2));
+        } else if (workspaceFolder) {
+          // Workspace relative path
+          resolvedPath = path.join(workspaceFolder.uri.fsPath, folderPath);
+        } else {
+          return null;
+        }
 
-    return vscode.Uri.file(resolvedPath);
-  } catch (error) {
-    logger.error(`Failed to resolve path: ${folderPath}`, error);
-    return null;
-  }
+        return vscode.Uri.file(resolvedPath);
+      },
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catchAll((cause) => {
+        logger.error(`Failed to resolve path: ${folderPath}`, cause);
+        return Effect.succeed(null);
+      }),
+    ),
+  );
 }
 
 /**
- * Scan a directory for SKILL.md files.
+ * Scan a directory for SKILL.md files (Effect version).
+ * Missing directories or missing SKILL.md files are treated as empty results.
  */
-async function scanDirectory(
+const scanDirectoryEffect = (
   dirUri: vscode.Uri,
   storage: "workspace" | "user",
   workspaceFolder?: string,
-): Promise<DiscoveredSkill[]> {
-  const skills: DiscoveredSkill[] = [];
-
-  try {
+): Effect.Effect<DiscoveredSkill[], DirectoryAccessError> =>
+  Effect.gen(function* () {
     // Check if directory exists
-    await vscode.workspace.fs.stat(dirUri);
+    yield* Effect.tryPromise({
+      try: () => vscode.workspace.fs.stat(dirUri),
+      catch: (cause) => new DirectoryAccessError({ uri: dirUri, cause }),
+    });
 
     // Read directory contents
-    const entries = await vscode.workspace.fs.readDirectory(dirUri);
+    const entries = yield* Effect.tryPromise({
+      try: () => vscode.workspace.fs.readDirectory(dirUri),
+      catch: (cause) => new DirectoryAccessError({ uri: dirUri, cause }),
+    });
 
+    const skills: DiscoveredSkill[] = [];
     for (const [name, type] of entries) {
       if (type !== vscode.FileType.Directory) {
         continue;
@@ -217,33 +221,151 @@ async function scanDirectory(
 
       const skillMdUri = vscode.Uri.joinPath(dirUri, name, "SKILL.md");
 
-      try {
-        // Check if SKILL.md exists
-        await vscode.workspace.fs.stat(skillMdUri);
+      // Check if SKILL.md exists; missing files are skipped
+      const stat = yield* Effect.tryPromise({
+        try: () => vscode.workspace.fs.stat(skillMdUri),
+        catch: (cause) => new DirectoryAccessError({ uri: skillMdUri, cause }),
+      }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+      if (!stat) {
+        continue;
+      }
 
-        const skill = await parseSkillFile(
-          skillMdUri,
-          storage,
-          workspaceFolder,
-        );
-        if (skill) {
-          skills.push(skill);
-        }
-      } catch {
-        // SKILL.md doesn't exist in this subdirectory, skip
+      const skill = yield* parseSkillFileEffect(
+        skillMdUri,
+        storage,
+        workspaceFolder,
+      ).pipe(
+        // Parse failures are logged and skipped
+        Effect.catchAll((error) => {
+          logger.error(`Failed to parse skill file: ${error.uri}`, error.cause);
+          return Effect.succeed(null);
+        }),
+      );
+      if (skill) {
+        skills.push(skill);
       }
     }
-  } catch {
-    // Directory doesn't exist or can't be read, skip
-  }
 
-  return skills;
+    return skills;
+  });
+
+/**
+ * Scan a directory for SKILL.md files.
+ * Returns an empty array when the directory is missing or unreadable.
+ */
+async function scanDirectory(
+  dirUri: vscode.Uri,
+  storage: "workspace" | "user",
+  workspaceFolder?: string,
+): Promise<DiscoveredSkill[]> {
+  const emptyResult: DiscoveredSkill[] = [];
+  return Effect.runPromise(
+    scanDirectoryEffect(dirUri, storage, workspaceFolder).pipe(
+      Effect.catchAll(() =>
+        // Directory doesn't exist or can't be read, skip
+        Effect.succeed(emptyResult),
+      ),
+    ),
+  );
+}
+
+/**
+ * Map a VS Code ChatSkill (from vscode.chat.getSkills) to our DiscoveredSkill.
+ * This is the preferred discovery path as it covers all 5 sources:
+ * local (workspace), user, extension, plugin, and builtin.
+ */
+function mapChatSkill(skill: vscode.ChatSkill): DiscoveredSkill {
+  const storage: SkillStorage =
+    skill.source === "local" ? "workspace" : skill.source;
+  return {
+    name: skill.name,
+    description: skill.description,
+    userInvocable: skill.userInvocable !== false,
+    disableModelInvocation: skill.disableModelInvocation,
+    argumentHint: undefined,
+    uri: skill.uri,
+    storage,
+    workspaceFolder: undefined,
+    displayPath:
+      storage === "user"
+        ? skill.uri.path.replace(/^\/Users\/[^/]+/, "~")
+        : vscode.workspace.asRelativePath(skill.uri),
+  };
+}
+
+/**
+ * Discover skills using VS Code's built-in discovery API (vscode.chat.getSkills).
+ * Covers all sources: workspace, user, extension-contributed, plugin, and builtin.
+ * Returns undefined when the API is not available (proposed API not enabled).
+ */
+async function discoverSkillsViaApi(
+  token?: vscode.CancellationToken,
+): Promise<DiscoveredSkill[] | undefined> {
+  if (typeof vscode.chat?.getSkills !== "function") {
+    return undefined;
+  }
+  const chatSkills = await vscode.chat.getSkills(
+    token ?? new vscode.CancellationTokenSource().token,
+  );
+  return chatSkills.map(mapChatSkill);
 }
 
 /**
  * Discover all Skills from configured source folders.
+ * Prefers VS Code's built-in discovery API (covers builtin/extension/plugin skills),
+ * falling back to disk scanning when the API is unavailable.
  */
 export async function discoverSkills(
+  token?: vscode.CancellationToken,
+): Promise<SkillDiscoveryResult> {
+  const startTime = Date.now();
+
+  // Preferred path: VS Code's own skill discovery (covers all 5 sources)
+  try {
+    const apiSkills = await discoverSkillsViaApi(token);
+    if (apiSkills !== undefined) {
+      const durationInMillis = Date.now() - startTime;
+      logger.log(
+        `[api] Found ${apiSkills.length} skills in ${durationInMillis}ms`,
+      );
+      return {
+        skills: sortSkills(apiSkills),
+        sourceFolders: [],
+        durationInMillis,
+      };
+    }
+    logger.log("[api] getSkills unavailable, falling back to disk scan");
+  } catch (error) {
+    logger.error("[api] getSkills failed, falling back to disk scan:", error);
+  }
+
+  // Fallback: scan skill directories on disk
+  return discoverSkillsFromDisk(token);
+}
+
+/**
+ * Sort skills by storage priority (workspace > user > plugin > extension > builtin),
+ * then by name.
+ */
+function sortSkills(skills: DiscoveredSkill[]): DiscoveredSkill[] {
+  const priority: Record<SkillStorage, number> = {
+    workspace: 0,
+    user: 1,
+    plugin: 2,
+    extension: 3,
+    builtin: 4,
+  };
+  return [...skills].sort((a, b) => {
+    const p = priority[a.storage] - priority[b.storage];
+    return p !== 0 ? p : a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * Discover Skills by scanning the filesystem (fallback path).
+ * Only covers workspace and user directories.
+ */
+async function discoverSkillsFromDisk(
   token?: vscode.CancellationToken,
 ): Promise<SkillDiscoveryResult> {
   const startTime = Date.now();
@@ -337,19 +459,14 @@ export async function discoverSkills(
     allSkills.push(skill);
   }
 
-  // Sort by storage type (workspace first), then by name
-  allSkills.sort((a, b) => {
-    if (a.storage !== b.storage) {
-      return a.storage === "workspace" ? -1 : 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  // Sort by storage priority (workspace first), then by name
+  const sorted = sortSkills(allSkills);
 
   const durationInMillis = Date.now() - startTime;
-  logger.log(`Found ${allSkills.length} skills in ${durationInMillis}ms`);
+  logger.log(`[disk] Found ${sorted.length} skills in ${durationInMillis}ms`);
 
   return {
-    skills: allSkills,
+    skills: sorted,
     sourceFolders,
     durationInMillis,
   };

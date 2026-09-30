@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
-import {
-  DiscoveredSkill,
-  discoverSkills,
-  SkillDiscoveryResult,
-} from "./skillsDiscovery.js";
-import { logger } from "./logger.js";
+import { Effect } from "effect";
+import { discoverSkills } from "./skillsDiscovery.js";
+import type { DiscoveredSkill, SkillDiscoveryResult } from "./types/skill.js";
+import { logger } from "./utils/logger.js";
 
 /**
  * ChatAttachContextProvider implementation for Skills.
@@ -74,18 +72,27 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
    * Refresh the skills cache.
    */
   private async _refreshSkills(): Promise<void> {
-    try {
-      logger.log("_refreshSkills starting...");
-      this._cachedResult = await discoverSkills();
-      logger.log(
-        "_refreshSkills done, got",
-        this._cachedResult.skills.length,
-        "skills",
-      );
-      this._onDidChangeSkills.fire();
-    } catch (error) {
-      logger.error("_refreshSkills FAILED:", error);
-    }
+    await Effect.runPromise(
+      Effect.tryPromise({
+        try: () => discoverSkills(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap((result) => {
+          this._cachedResult = result;
+          logger.log(
+            "_refreshSkills done, got",
+            result.skills.length,
+            "skills",
+          );
+          this._onDidChangeSkills.fire();
+          return Effect.void;
+        }),
+        Effect.catchAll((error) => {
+          logger.error("_refreshSkills FAILED:", error);
+          return Effect.void;
+        }),
+      ),
+    );
   }
 
   /**
