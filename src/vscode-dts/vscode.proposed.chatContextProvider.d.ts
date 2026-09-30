@@ -10,7 +10,8 @@ declare module "vscode" {
 
   export namespace chat {
     /**
-     * Register a chat workspace context provider. Workspace context is automatically included in all chat requests.
+     * Register a chat workspace context provider. Workspace context is
+     * automatically included in all chat requests.
      */
     export function registerChatWorkspaceContextProvider(
       id: string,
@@ -18,23 +19,24 @@ declare module "vscode" {
     ): Disposable;
 
     /**
-     * Register a chat explicit context provider. Explicit context items are shown as options when the user explicitly attaches context use the "Add Context" action in the chat input box.
+     * Register a chat explicit context provider. Explicit context items are
+     * shown as options when the user explicitly attaches context use the "Add
+     * Context" action in the chat input box.
      */
     export function registerChatAttachContextProvider(
       id: string,
       provider: ChatAttachContextProvider,
     ): Disposable;
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     export function registerChatExplicitContextProvider(
       id: string,
       provider: any,
     ): Disposable;
 
     /**
-     * Register a chat resource context provider. Resource context is provided for a specific resource.
+     * Register a chat resource context provider. Resource context is provided
+     * for a specific resource.
      */
     export function registerChatTabContextProvider(
       selector: TabSelector,
@@ -42,9 +44,7 @@ declare module "vscode" {
       provider: ChatTabContextProvider,
     ): Disposable;
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     export function registerChatResourceContextProvider(
       selector: DocumentSelector,
       id: string,

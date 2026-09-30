@@ -9,9 +9,7 @@ import type {
   SkillStorage,
 } from "./types/skill.js";
 
-/**
- * Default skill source folders matching VS Code's built-in locations.
- */
+/** Default skill source folders matching VS Code's built-in locations. */
 const DEFAULT_SKILL_SOURCE_FOLDERS = [
   { path: ".agents/skills", storage: "workspace" as const },
   { path: ".github/skills", storage: "workspace" as const },
@@ -22,8 +20,8 @@ const DEFAULT_SKILL_SOURCE_FOLDERS = [
 ];
 
 /**
- * Parse YAML frontmatter from a Markdown file content.
- * Simple parser that handles key: value pairs at the beginning of the file.
+ * Parse YAML frontmatter from a Markdown file content. Simple parser that
+ * handles key: value pairs at the beginning of the file.
  */
 function parseFrontmatter(
   content: string,
@@ -65,12 +63,10 @@ function parseFrontmatter(
   return result;
 }
 
+/** Get the skill folder name from a SKILL.md URI. */
 /**
- * Get the skill folder name from a SKILL.md URI.
- */
-/**
- * Extract a string value from frontmatter, returning undefined if the value
- * is not a string.
+ * Extract a string value from frontmatter, returning undefined if the value is
+ * not a string.
  */
 function getStringValue(
   frontmatter: Record<string, string | boolean | undefined>,
@@ -87,9 +83,9 @@ function getSkillFolderName(uri: vscode.Uri): string {
 }
 
 /**
- * Read and parse a SKILL.md file (Effect version).
- * Fails with SkillFileError on read failure; succeeds with null when the
- * skill should be skipped (not user-invocable).
+ * Read and parse a SKILL.md file (Effect version). Fails with SkillFileError on
+ * read failure; succeeds with null when the skill should be skipped (not
+ * user-invocable).
  */
 const parseSkillFileEffect = (
   uri: vscode.Uri,
@@ -155,8 +151,8 @@ const parseSkillFileEffect = (
   });
 
 /**
- * Resolve a skill source folder path to a URI.
- * Logs and returns null on failure.
+ * Resolve a skill source folder path to a URI. Logs and returns null on
+ * failure.
  */
 async function resolveSourceFolder(
   folderPath: string,
@@ -192,8 +188,8 @@ async function resolveSourceFolder(
 }
 
 /**
- * Scan a directory for SKILL.md files (Effect version).
- * Missing directories or missing SKILL.md files are treated as empty results.
+ * Scan a directory for SKILL.md files (Effect version). Missing directories or
+ * missing SKILL.md files are treated as empty results.
  */
 const scanDirectoryEffect = (
   dirUri: vscode.Uri,
@@ -250,8 +246,8 @@ const scanDirectoryEffect = (
   });
 
 /**
- * Scan a directory for SKILL.md files.
- * Returns an empty array when the directory is missing or unreadable.
+ * Scan a directory for SKILL.md files. Returns an empty array when the
+ * directory is missing or unreadable.
  */
 async function scanDirectory(
   dirUri: vscode.Uri,
@@ -271,8 +267,8 @@ async function scanDirectory(
 
 /**
  * Map a VS Code ChatSkill (from vscode.chat.getSkills) to our DiscoveredSkill.
- * This is the preferred discovery path as it covers all 5 sources:
- * local (workspace), user, extension, plugin, and builtin.
+ * This is the preferred discovery path as it covers all 5 sources: local
+ * (workspace), user, extension, plugin, and builtin.
  */
 function mapChatSkill(skill: vscode.ChatSkill): DiscoveredSkill {
   const storage: SkillStorage =
@@ -294,9 +290,10 @@ function mapChatSkill(skill: vscode.ChatSkill): DiscoveredSkill {
 }
 
 /**
- * Discover skills using VS Code's built-in discovery API (vscode.chat.getSkills).
- * Covers all sources: workspace, user, extension-contributed, plugin, and builtin.
- * Returns undefined when the API is not available (proposed API not enabled).
+ * Discover skills using VS Code's built-in discovery API
+ * (vscode.chat.getSkills). Covers all sources: workspace, user,
+ * extension-contributed, plugin, and builtin. Returns undefined when the API is
+ * not available (proposed API not enabled).
  */
 async function discoverSkillsViaApi(
   token?: vscode.CancellationToken,
@@ -311,9 +308,9 @@ async function discoverSkillsViaApi(
 }
 
 /**
- * Discover all Skills from configured source folders.
- * Prefers VS Code's built-in discovery API (covers builtin/extension/plugin skills),
- * falling back to disk scanning when the API is unavailable.
+ * Discover all Skills from configured source folders. Prefers VS Code's
+ * built-in discovery API (covers builtin/extension/plugin skills), falling back
+ * to disk scanning when the API is unavailable.
  */
 export async function discoverSkills(
   token?: vscode.CancellationToken,
@@ -344,8 +341,8 @@ export async function discoverSkills(
 }
 
 /**
- * Sort skills by storage priority (workspace > user > plugin > extension > builtin),
- * then by name.
+ * Sort skills by storage priority (workspace > user > plugin > extension >
+ * builtin), then by name.
  */
 function sortSkills(skills: DiscoveredSkill[]): DiscoveredSkill[] {
   const priority: Record<SkillStorage, number> = {
@@ -362,8 +359,8 @@ function sortSkills(skills: DiscoveredSkill[]): DiscoveredSkill[] {
 }
 
 /**
- * Discover Skills by scanning the filesystem (fallback path).
- * Only covers workspace and user directories.
+ * Discover Skills by scanning the filesystem (fallback path). Only covers
+ * workspace and user directories.
  */
 async function discoverSkillsFromDisk(
   token?: vscode.CancellationToken,

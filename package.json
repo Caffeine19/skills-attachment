@@ -59,9 +59,20 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs}": [
+      "eslint --fix",
+      "prettier --experimental-cli --write"
+    ],
+    "*.{json,md}": [
+      "prettier --experimental-cli --write"
+    ]
   },
   "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
     "@types/vscode": "^1.136.0",
@@ -69,7 +80,12 @@
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "npm-run-all": "^4.1.5",
+    "prettier": "^3.9.9",
+    "prettier-plugin-jsdoc": "^1.8.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1"
   },

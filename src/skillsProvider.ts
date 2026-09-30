@@ -5,8 +5,8 @@ import type { DiscoveredSkill, SkillDiscoveryResult } from "./types/skill.js";
 import { logger } from "./utils/logger.js";
 
 /**
- * ChatAttachContextProvider implementation for Skills.
- * Provides Skills as native attachments in the Cmd+/ picker.
+ * ChatAttachContextProvider implementation for Skills. Provides Skills as
+ * native attachments in the Cmd+/ picker.
  */
 export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
   private _onDidChangeSkills = new vscode.EventEmitter<void>();
@@ -37,9 +37,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
     this._refreshSkills();
   }
 
-  /**
-   * Set up file system watchers for skill directories.
-   */
+  /** Set up file system watchers for skill directories. */
   private _setupFileSystemWatchers(): void {
     // Watch for changes in common skill locations
     const patterns = [
@@ -56,9 +54,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
     });
   }
 
-  /**
-   * Schedule a debounced refresh of skills.
-   */
+  /** Schedule a debounced refresh of skills. */
   private _scheduleRefresh(): void {
     if (this._refreshTimer) {
       clearTimeout(this._refreshTimer);
@@ -68,9 +64,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
     }, 500); // 500ms debounce
   }
 
-  /**
-   * Refresh the skills cache.
-   */
+  /** Refresh the skills cache. */
   private async _refreshSkills(): Promise<void> {
     await Effect.runPromise(
       Effect.tryPromise({
@@ -96,8 +90,9 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
   }
 
   /**
-   * Provide a list of chat context items that a user can choose from.
-   * These context items are shown as options when the user explicitly attaches context.
+   * Provide a list of chat context items that a user can choose from. These
+   * context items are shown as options when the user explicitly attaches
+   * context.
    */
   async provideAttachChatContext(
     token: vscode.CancellationToken,
@@ -132,10 +127,10 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
   }
 
   /**
-   * Resolve a chat context item to get its full value.
-   * This is called when the user selects a skill from the picker.
-   * Dynamically checks github.copilot.chat.skillTool.enabled to determine
-   * whether to instruct the agent to use the skill tool or read the file.
+   * Resolve a chat context item to get its full value. This is called when the
+   * user selects a skill from the picker. Dynamically checks
+   * github.copilot.chat.skillTool.enabled to determine whether to instruct the
+   * agent to use the skill tool or read the file.
    */
   async resolveAttachChatContext(
     context: vscode.ChatContextItem,
@@ -191,9 +186,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
     };
   }
 
-  /**
-   * Create a tooltip for a skill.
-   */
+  /** Create a tooltip for a skill. */
   private _createTooltip(skill: DiscoveredSkill): vscode.MarkdownString {
     const tooltip = new vscode.MarkdownString();
     tooltip.appendMarkdown(`**${skill.name}**\n\n`);
@@ -219,9 +212,7 @@ export class SkillsAttachProvider implements vscode.ChatAttachContextProvider {
     return tooltip;
   }
 
-  /**
-   * Dispose of resources.
-   */
+  /** Dispose of resources. */
   dispose(): void {
     this._onDidChangeSkills.dispose();
     if (this._refreshTimer) {

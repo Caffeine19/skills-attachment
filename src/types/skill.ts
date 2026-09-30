@@ -1,20 +1,14 @@
 import * as vscode from "vscode";
 
 /**
- * Where a skill was loaded from.
- * Mirrors VS Code's `ChatResourceSource`: workspace dirs (local), user home dirs,
- * extension-contributed, plugin, and built-in skills.
+ * Where a skill was loaded from. Mirrors VS Code's `ChatResourceSource`:
+ * workspace dirs (local), user home dirs, extension-contributed, plugin, and
+ * built-in skills.
  */
 export type SkillStorage =
-  | "workspace"
-  | "user"
-  | "extension"
-  | "plugin"
-  | "builtin";
+  "workspace" | "user" | "extension" | "plugin" | "builtin";
 
-/**
- * Represents a discovered Skill with its metadata.
- */
+/** Represents a discovered Skill with its metadata. */
 export interface DiscoveredSkill {
   /** Skill name (from SKILL.md frontmatter or folder name) */
   readonly name: string;
@@ -36,9 +30,7 @@ export interface DiscoveredSkill {
   readonly displayPath: string;
 }
 
-/**
- * Result of skill discovery with metadata about the discovery process.
- */
+/** Result of skill discovery with metadata about the discovery process. */
 export interface SkillDiscoveryResult {
   /** All discovered skills */
   readonly skills: DiscoveredSkill[];
